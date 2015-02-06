@@ -30,6 +30,11 @@ MODULE_DESCRIPTION("Power sampling");
 	and releases device, while 'cat' keeps the device busy.
 */
 
+#ifdef DEBUG
+#define TRACE(x) x
+#else
+#define TRACE(x)
+#endif
 
 /* File operations */
 static int device_open(struct inode *, struct file *);
@@ -75,11 +80,10 @@ int init_module(void)
 	return 0;
 }
 
-
 void cleanup_module(void)
 {
-  printk(KERN_ALERT "Unloading power measurement module\n");
-	printk(KERN_DEBUG "Unregistering device %s\n", DEVICE_NAME);
+  printk(KERN_INFO "Unloading power measurement module\n");
+	printk(KERN_INFO "Unregistering device %s\n", DEVICE_NAME);
 	unregister_chrdev(major, DEVICE_NAME);
 }
 
@@ -92,7 +96,7 @@ static int init_adc( void )
 		return ret;
 	}
 
-	printk(KERN_DEBUG "ADC is ready\n");
+	TRACE( printk(KERN_DEBUG "ADC is ready\n") );
 
 #if 0
 	ret = qpnp_iadc_enable(true);
@@ -124,9 +128,10 @@ static int release_adc( void )
 int device_open(struct inode* inode, struct file* file)
 {
 	int ret;
-	printk(KERN_DEBUG "iadc device_open\n");
+	TRACE( printk(KERN_DEBUG "iadc device_open\n") );
 	
 	if (device_open_refcount) {
+		TRACE( printk(KERN_DEBUG "Device %s is busy\n", DEVICE_NAME) );
 		return -EBUSY;
 	}
 
@@ -139,7 +144,7 @@ int device_open(struct inode* inode, struct file* file)
 	device_open_refcount++;
 	try_module_get(THIS_MODULE); /* increment reference count */
 
-	printk(KERN_DEBUG "Opened device %s\n", DEVICE_NAME);
+	TRACE( printk(KERN_DEBUG "Opened device %s\n", DEVICE_NAME) );
 	return 0;
 }
 
@@ -164,13 +169,13 @@ static int read_adc_sample(int32_t* data)
 
 static int device_release(struct inode* inode, struct file* file)
 {
-	printk(KERN_DEBUG "iadc device_release\n");
+	TRACE( printk(KERN_DEBUG "iadc device_release\n") );
 
 	(void) release_adc();
 
 	device_open_refcount--;
 	module_put(THIS_MODULE); /* decrement reference count */
-	printk(KERN_DEBUG "Released device %s\n", DEVICE_NAME);
+	TRACE( printk(KERN_DEBUG "Released device %s\n", DEVICE_NAME) );
 	return 0;
 }
 
@@ -186,7 +191,7 @@ ssize_t device_read(struct file* file,
 	int msg_len;
 	const char* message_ptr = NULL;
 
-	printk(KERN_DEBUG "iadc device_read: requested %u bytes\n", length);
+	TRACE( printk(KERN_DEBUG "iadc device_read: requested %u bytes\n", length) );
 
 	while ( length > 0 ) {
 
@@ -197,9 +202,9 @@ ssize_t device_read(struct file* file,
 		}
 		
 		msg_len = snprintf(message, BUFFER_LEN, "%d\n", data);
-#if 0
+#if 1
 		/* skip messages that overflow the buffer */
-		if (length - msg_lan < 0) {
+		if (length - msg_len < 0) {
 			break;
 		}
 #endif
@@ -219,7 +224,7 @@ ssize_t device_read(struct file* file,
 		}
 	} /* while not read length */
 
-	printk(KERN_DEBUG "Read %u bytes\n", bytes_read);
+	TRACE( printk(KERN_DEBUG "Read %u bytes\n", bytes_read) );
 	return bytes_read;
 }
 
