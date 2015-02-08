@@ -150,9 +150,9 @@ int device_open(struct inode* inode, struct file* file)
 
 static int read_adc_sample(int32_t* data)
 { 
-#if 1
 	int ret;
 	struct qpnp_iadc_result result;
+
 	ret =	qpnp_iadc_read(INTERNAL_RSENSE, &result);
 	if (ret) {
 		printk(KERN_ALERT "Failed reading from ADC (%d)\n", ret);
@@ -160,9 +160,6 @@ static int read_adc_sample(int32_t* data)
 	}
 
 	*data = result.result_ua;
-#else
-	*data = 0;
-#endif
 
 	return 0;
 }
@@ -180,10 +177,10 @@ static int device_release(struct inode* inode, struct file* file)
 }
 
 static 
-ssize_t device_read(struct file* file,
+ssize_t device_read(struct file* file, /* unused */
 										char* buffer, /* buffer to fill with data */
 										size_t length, /* buffer size */
-										loff_t* offset)
+										loff_t* offset) /* unused */
 {
 	unsigned int bytes_read = 0;
 	int ret;
@@ -202,12 +199,12 @@ ssize_t device_read(struct file* file,
 		}
 		
 		msg_len = snprintf(message, BUFFER_LEN, "%d\n", data);
-#if 1
+		
 		/* skip messages that overflow the buffer */
 		if (length - msg_len < 0) {
 			break;
 		}
-#endif
+
 		message_ptr = message;
 	
 		while ( (length > 0) && (msg_len > 0) ) {
