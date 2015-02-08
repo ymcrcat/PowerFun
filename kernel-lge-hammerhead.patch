@@ -1,0 +1,258 @@
+diff --git a/arch/arm/configs/cyanogenmod_hammerhead_defconfig b/arch/arm/configs/cyanogenmod_hammerhead_defconfig
+index 9cf9c64..bab4e30 100644
+--- a/arch/arm/configs/cyanogenmod_hammerhead_defconfig
++++ b/arch/arm/configs/cyanogenmod_hammerhead_defconfig
+@@ -180,7 +180,9 @@ CONFIG_HAVE_ARCH_JUMP_LABEL=y
+ CONFIG_HAVE_GENERIC_DMA_COHERENT=y
+ CONFIG_RT_MUTEXES=y
+ CONFIG_BASE_SMALL=0
+-# CONFIG_MODULES is not set
++CONFIG_MODULES=y
++CONFIG_MODULE_UNLOAD=y
++CONFIG_MODULE_FORCE_UNLOAD=y
+ CONFIG_STOP_MACHINE=y
+ CONFIG_BLOCK=y
+ CONFIG_LBDAF=y
+diff --git a/drivers/hwmon/qpnp-adc-current.c b/drivers/hwmon/qpnp-adc-current.c
+index d9f8207..d89596d 100644
+--- a/drivers/hwmon/qpnp-adc-current.c
++++ b/drivers/hwmon/qpnp-adc-current.c
+@@ -103,7 +103,7 @@
+ 
+ #define QPNP_IADC_ADC_DIG_PARAM				0x50
+ #define QPNP_IADC_CLK_SEL_SHIFT				1
+-#define QPNP_IADC_DEC_RATIO_SEL				3
++#define QPNP_IADC_DEC_RATIO_SEL				0
+ 
+ #define QPNP_IADC_CONV_REQUEST				0x52
+ #define QPNP_IADC_CONV_REQ				BIT(7)
+@@ -206,10 +206,12 @@ static irqreturn_t qpnp_iadc_isr(int irq, void *dev_id)
+ 	return IRQ_HANDLED;
+ }
+ 
+-static int32_t qpnp_iadc_enable(bool state)
++int32_t qpnp_iadc_enable(bool state)
+ {
+ 	int rc = 0;
+ 	u8 data = 0;
++	
++	/* printk(KERN_INFO "iadc_enable"); */
+ 
+ 	data = QPNP_IADC_ADC_EN;
+ 	if (state) {
+@@ -230,6 +232,7 @@ static int32_t qpnp_iadc_enable(bool state)
+ 
+ 	return 0;
+ }
++EXPORT_SYMBOL(qpnp_iadc_enable);
+ 
+ static int32_t qpnp_iadc_status_debug(void)
+ {
+@@ -278,12 +281,12 @@ static int32_t qpnp_iadc_status_debug(void)
+ 	return 0;
+ }
+ 
+-static int32_t qpnp_iadc_read_conversion_result(uint16_t *data)
++int32_t qpnp_iadc_read_conversion_result(uint16_t *data)
+ {
+ 	uint8_t rslt_lsb, rslt_msb;
+ 	uint16_t rslt;
+ 	int32_t rc;
+-
++	
+ 	rc = qpnp_iadc_read_reg(QPNP_IADC_DATA0, &rslt_lsb);
+ 	if (rc < 0) {
+ 		pr_err("qpnp adc result read failed with %d\n", rc);
+@@ -299,12 +302,9 @@ static int32_t qpnp_iadc_read_conversion_result(uint16_t *data)
+ 	rslt = (rslt_msb << 8) | rslt_lsb;
+ 	*data = rslt;
+ 
+-	rc = qpnp_iadc_enable(false);
+-	if (rc)
+-		return rc;
+-
+ 	return 0;
+ }
++EXPORT_SYMBOL(qpnp_iadc_read_conversion_result);
+ 
+ static int32_t qpnp_iadc_comp(int64_t *result, struct qpnp_iadc_comp comp,
+ 							int64_t die_temp)
+@@ -404,69 +404,78 @@ static int32_t qpnp_iadc_comp_info(void)
+ 	return rc;
+ }
+ 
+-static int32_t qpnp_iadc_configure(enum qpnp_iadc_channels channel,
+-					uint16_t *raw_code, uint32_t mode_sel)
++int32_t qpnp_iadc_configure(enum qpnp_iadc_channels channel,
++														uint16_t *raw_code, uint32_t mode_sel)
+ {
+ 	struct qpnp_iadc_drv *iadc = qpnp_iadc;
+ 	u8 qpnp_iadc_mode_reg = 0, qpnp_iadc_ch_sel_reg = 0;
+-	u8 qpnp_iadc_conv_req = 0, qpnp_iadc_dig_param_reg = 0;
++	u8 qpnp_iadc_dig_param_reg = 0;
+ 	u8 status1 = 0;
+ 	uint32_t count = 0;
+ 	int32_t rc = 0;
+ 
++	static int configured = 0;
++	
++	/* printk(KERN_INFO "iadc_configure start"); */
++
+ 	qpnp_iadc_ch_sel_reg = channel;
+ 
+-	qpnp_iadc_dig_param_reg |= iadc->adc->amux_prop->decimation <<
+-					QPNP_IADC_DEC_RATIO_SEL;
+-	if (iadc->iadc_mode_sel)
+-		qpnp_iadc_mode_reg |= (QPNP_ADC_TRIM_EN | QPNP_VADC_SYNCH_EN);
+-	else
+-		qpnp_iadc_mode_reg |= QPNP_ADC_TRIM_EN;
++	if (!configured) {
+ 
+-	qpnp_iadc_conv_req = QPNP_IADC_CONV_REQ;
++		qpnp_iadc_dig_param_reg |= iadc->adc->amux_prop->decimation <<
++			QPNP_IADC_DEC_RATIO_SEL;
++		if (iadc->iadc_mode_sel)
++			qpnp_iadc_mode_reg |= (QPNP_ADC_TRIM_EN | QPNP_VADC_SYNCH_EN);
++		else
++			qpnp_iadc_mode_reg |= QPNP_ADC_TRIM_EN;
+ 
+-	rc = qpnp_iadc_write_reg(QPNP_IADC_MODE_CTL, qpnp_iadc_mode_reg);
+-	if (rc) {
+-		pr_err("qpnp adc read adc failed with %d\n", rc);
+-		return rc;
+-	}
++		rc = qpnp_iadc_write_reg(QPNP_IADC_MODE_CTL, qpnp_iadc_mode_reg);
++		if (rc) {
++			pr_err("qpnp adc read adc failed with %d\n", rc);
++			return rc;
++		}
+ 
+-	rc = qpnp_iadc_write_reg(QPNP_IADC_ADC_CH_SEL_CTL,
+-						qpnp_iadc_ch_sel_reg);
+-	if (rc) {
+-		pr_err("qpnp adc read adc failed with %d\n", rc);
+-		return rc;
+-	}
++		rc = qpnp_iadc_write_reg(QPNP_IADC_ADC_CH_SEL_CTL,
++				qpnp_iadc_ch_sel_reg);
++		if (rc) {
++			pr_err("qpnp adc read adc failed with %d\n", rc);
++			return rc;
++		}
+ 
+-	rc = qpnp_iadc_write_reg(QPNP_ADC_DIG_PARAM,
+-						qpnp_iadc_dig_param_reg);
+-	if (rc) {
+-		pr_err("qpnp adc read adc failed with %d\n", rc);
+-		return rc;
+-	}
++		rc = qpnp_iadc_write_reg(QPNP_ADC_DIG_PARAM,
++				qpnp_iadc_dig_param_reg);
++		if (rc) {
++			pr_err("qpnp adc read adc failed with %d\n", rc);
++			return rc;
++		}
+ 
+-	rc = qpnp_iadc_write_reg(QPNP_HW_SETTLE_DELAY,
+-				iadc->adc->amux_prop->hw_settle_time);
+-	if (rc < 0) {
+-		pr_err("qpnp adc configure error for hw settling time setup\n");
+-		return rc;
+-	}
++		rc = qpnp_iadc_write_reg(QPNP_HW_SETTLE_DELAY, 
++				ADC_CHANNEL_HW_SETTLE_DELAY_0US);
++		// iadc->adc->amux_prop->hw_settle_time);
++		if (rc < 0) {
++			pr_err("qpnp adc configure error for hw settling time setup\n");
++			return rc;
++		}
+ 
+-	rc = qpnp_iadc_write_reg(QPNP_FAST_AVG_CTL,
+-					iadc->adc->amux_prop->fast_avg_setup);
+-	if (rc < 0) {
+-		pr_err("qpnp adc fast averaging configure error\n");
+-		return rc;
+-	}
++		rc = qpnp_iadc_write_reg(QPNP_FAST_AVG_CTL,
++				ADC_FAST_AVG_SAMPLE_1);
++		/// iadc->adc->amux_prop->fast_avg_setup);
++		if (rc < 0) {
++			pr_err("qpnp adc fast averaging configure error\n");
++			return rc;
++		}
+ 
+-	if (!iadc->iadc_poll_eoc)
+-		INIT_COMPLETION(iadc->adc->adc_rslt_completion);
++		if (!iadc->iadc_poll_eoc)
++			INIT_COMPLETION(iadc->adc->adc_rslt_completion);
+ 
+-	rc = qpnp_iadc_enable(true);
+-	if (rc)
+-		return rc;
++		rc = qpnp_iadc_enable(true);
++		if (rc)
++			return rc;
++
++		configured = 1;
++	}
+ 
+-	rc = qpnp_iadc_write_reg(QPNP_CONV_REQ, qpnp_iadc_conv_req);
++	rc = qpnp_iadc_write_reg(QPNP_CONV_REQ, QPNP_IADC_CONV_REQ);
+ 	if (rc) {
+ 		pr_err("qpnp adc read adc failed with %d\n", rc);
+ 		return rc;
+@@ -518,8 +527,19 @@ static int32_t qpnp_iadc_configure(enum qpnp_iadc_channels channel,
+ 		return rc;
+ 	}
+ 
++#if 0
++	rc = qpnp_iadc_enable(false);
++	if (rc) {
++		pr_err("qpnp iadc disable failed with %d\n", rc);
++		return rc;
++	}
++#endif
++
++	/* printk(KERN_INFO "iadc_configure end"); */
++
+ 	return 0;
+ }
++EXPORT_SYMBOL(qpnp_iadc_configure);
+ 
+ #define IADC_CENTER	0xC000
+ #define IADC_READING_RESOLUTION_N	542535
+@@ -771,6 +791,7 @@ int32_t qpnp_iadc_read(enum qpnp_iadc_channels channel,
+ 	}
+ 
+ 	mutex_lock(&iadc->adc->adc_lock);
++	/* printk(KERN_DEBUG "Locked iadc mutex\n"); */
+ 
+ 	if (iadc->iadc_poll_eoc) {
+ 		pr_debug("acquiring iadc eoc wakelock\n");
+@@ -816,6 +837,7 @@ fail:
+ 		pm_relax(iadc->dev);
+ 	}
+ 	mutex_unlock(&iadc->adc->adc_lock);
++	/* printk(KERN_DEBUG "Released iadc mutex\n"); */
+ 
+ 	return rc;
+ }
+diff --git a/include/linux/qpnp/qpnp-adc.h b/include/linux/qpnp/qpnp-adc.h
+index dfb156f..fc52bcc 100644
+--- a/include/linux/qpnp/qpnp-adc.h
++++ b/include/linux/qpnp/qpnp-adc.h
+@@ -1376,6 +1376,14 @@ static inline int32_t qpnp_vbat_sns_comp_result(int64_t *result)
+ /* Public API */
+ #if defined(CONFIG_SENSORS_QPNP_ADC_CURRENT)				\
+ 			|| defined(CONFIG_SENSORS_QPNP_ADC_CURRENT_MODULE)
++
++int32_t qpnp_iadc_enable(bool state);
++
++int32_t qpnp_iadc_configure(enum qpnp_iadc_channels channel,
++														uint16_t *raw_code, uint32_t mode_sel);
++
++int32_t qpnp_iadc_read_conversion_result(uint16_t *data);
++
+ /**
+  * qpnp_iadc_read() - Performs ADC read on the current channel.
+  * @channel:	Input channel to perform the ADC read.
