@@ -1,17 +1,13 @@
-native-activity-example
-=======================
+Current logging application
+===========================
 
 #### Overview
-A simple example of just using the Native Activity in Android without JNI / Java code.
+A native application that reads current measurements using sysfs and logs them to a file.
 
 
 #### Usage
 Compile using the NDK tool "ndk-build" in the directory, you can easily create a APK by importing the project into Eclipse and selecting Run As > Android application.
-
-#### Purpose
-A simple boilerplate for native development in Android.
-
-#### TODO
-1. Improve the init_display method, currently uses the stock Google example code
-2. Add some more interesting drawing, currently just clears the red
-3. Look into licensing, will most likely use Apache 2
+Another option to compile the APK is to run
+$ ant debug
+which can then be installed by running
+$ ant installd
