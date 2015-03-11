@@ -178,9 +178,9 @@ static int device_release(struct inode* inode, struct file* file)
 
 static 
 ssize_t device_read(struct file* file, /* unused */
-										char* buffer, /* buffer to fill with data */
-										size_t length, /* buffer size */
-										loff_t* offset) /* unused */
+		    char* buffer, /* buffer to fill with data */
+		    size_t length, /* buffer size */
+		    loff_t* offset) /* unused */
 {
 	unsigned int bytes_read = 0;
 	int ret;
